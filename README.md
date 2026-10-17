@@ -1,9 +1,14 @@
 # Etsy Listing Scout
 
-Give it a keyword and `top_n`. It returns the top N Etsy listings for that keyword and saves them to Excel and CSV, using the same columns as the `competitor_listing` market-research sheet.
+Market research for Etsy product lines, with two tools:
+
+- **`etsy-scout`** finds the top N listings for a keyword and saves them in the `competitor_listing` sheet format (price, sale price, reviews, shop stats, and more).
+- **`etsy-trends`** tracks keyword demand and market size over time, using the `rankhero_search_trend` sheet format (monthly searches, competing listings, CPC, and trend), plus price bands and history charts.
 
 ```bash
 uv run etsy-scout "adhd notebook" --top-n 20
+uv run etsy-trends import-rankhero ~/Downloads/rankhero
+uv run etsy-trends snapshot "adhd planner" "adhd notebook"
 ```
 
 ## Setup
@@ -45,10 +50,52 @@ Each run writes `output/<keyword>_<timestamp>.xlsx` (sheet `competitor_listing`)
 ### Web UI
 
 ```bash
-uv run streamlit run app/streamlit_app.py
+uv run streamlit run app/Top_Listings.py
 ```
 
-Type a keyword, pick Top N, and click **Run**. You get a results table with Excel and CSV download buttons.
+- **Top Listings**: type a keyword, pick Top N, and click **Run**. You get a results table with Excel and CSV download buttons.
+- **Keyword Trends**: drop in saved RankHero pages, take Etsy API snapshots, and chart history.
+
+## Keyword trends (`etsy-trends`)
+
+Etsy doesn't publish search volume, so demand numbers come from RankHero. Market size and prices come straight from the Etsy API.
+
+| Data | Source | How automatic |
+|---|---|---|
+| Monthly searches, 12-month trend, CPC, keyword difficulty, price bands, country split, related keywords | RankHero keyword pages | **Semi-automatic.** [RankHero's terms](https://www.rankhero.com/terms) forbid bots and scrapers, so you save each page in your own browser and the tool parses it. Nothing is fetched from rankhero.com |
+| Competing-listing count, price min/quartiles/max, price bands, average favorites | Etsy Open API | **Fully automatic** (needs your API key) |
+| Trend lines over time | Local history in `data/` (git-ignored) | **Automatic.** Every import and snapshot is added to the history |
+
+### Workflow
+
+```bash
+# 1. Open the RankHero page for each keyword in your browser
+uv run etsy-trends urls "adhd planner" "adhd notebook" "magnetic planner" --open
+#    ...then save each one with Cmd+S ("Webpage, HTML Only") into one folder.
+
+# 2. Parse the saved pages into a workbook and add them to the history
+uv run etsy-trends import-rankhero ~/Downloads/rankhero
+
+# 3. Snapshot Etsy's own numbers (run weekly; with no keywords it re-snapshots every tracked keyword)
+uv run etsy-trends snapshot "adhd planner" "adhd notebook"
+uv run etsy-trends snapshot
+
+# 4. Build a workbook from all stored history
+uv run etsy-trends report
+```
+
+You can also pass `--keywords-file keywords.txt` (one keyword per line) to `urls` and `snapshot`.
+
+`import-rankhero` writes `output/keyword_trends_<timestamp>.xlsx` with these sheets:
+- `rankhero_search_trend`: the sheet-2 columns (Keyword, Typical monthly searches, Competing listings, Ad cost per click, Trend), followed by difficulty, peak and low month, seasonality, price range, top country, and related keywords
+- `monthly_searches`, `price_bands`, `search_by_country`, `competition_by_country`
+
+### How the trend label is computed
+
+A single RankHero page shows only 12 months, which can't separate seasonality from real growth. The label works like this:
+- If the busiest month is at least 1.8x the quietest, the keyword is labelled **Seasonal: peak Dec, low Jun (2.2x)** instead of falsely "falling" during its off-season.
+- Otherwise the label is **Rising / Falling / Stable**, comparing the last 3 months with the first 3 (±15% thresholds).
+- Monthly series from every import are merged in `data/monthly_searches.csv`. Once a keyword has 24 or more months stored, the label switches to a true **year-over-year** change, such as "Rising +30% YoY". Re-import your keywords every few months to get there.
 
 ## Output columns
 
@@ -101,6 +148,7 @@ src/etsy_scout/
   cli.py             `etsy-scout` command
   browser.py         Playwright session (experimental sources)
   search_scraper.py, listing_scraper.py, shop_scraper.py, selectors.py
-app/streamlit_app.py web UI
+  trends/            etsy-trends: RankHero import, API snapshots, history, analysis
+app/Top_Listings.py  web UI (plus app/pages/1_Keyword_Trends.py)
 tests/
 ```

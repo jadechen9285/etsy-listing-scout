@@ -1,4 +1,4 @@
-"""Small web UI: `uv run streamlit run app/streamlit_app.py`."""
+"""Small web UI: `uv run streamlit run app/Top_Listings.py`."""
 
 from __future__ import annotations
 
