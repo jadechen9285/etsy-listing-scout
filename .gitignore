@@ -13,3 +13,6 @@ wheels/
 .env
 .browser-profile/
 output/
+
+# Editor settings
+.vscode/

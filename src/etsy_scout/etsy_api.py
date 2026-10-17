@@ -59,6 +59,13 @@ class EtsyApi:
             if resp.status_code == 429:
                 time.sleep(2**attempt)
                 continue
+            if resp.status_code in (401, 403):
+                raise EtsyApiError(
+                    f"Etsy rejected the API key ({resp.status_code}: {resp.text[:200].strip()}). "
+                    "Check that your app is approved/active at "
+                    "https://www.etsy.com/developers/your-apps and that ETSY_API_KEY is the "
+                    "Keystring and ETSY_SHARED_SECRET the Shared secret."
+                )
             if resp.status_code >= 400:
                 raise EtsyApiError(f"GET {path} -> {resp.status_code}: {resp.text[:300]}")
             return resp.json()

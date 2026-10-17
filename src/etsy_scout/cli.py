@@ -9,6 +9,7 @@ import typer
 from dotenv import load_dotenv
 
 from .browser import BlockedError
+from .etsy_api import EtsyApiError
 from .export import to_dataframe, write_outputs
 from .pipeline import SOURCES, run
 
@@ -46,7 +47,7 @@ def scout(
             headless=None if headful is None else not headful,
             on_progress=lambda msg: typer.echo(msg, err=True),
         )
-    except (BlockedError, ValueError) as exc:
+    except (BlockedError, EtsyApiError, ValueError) as exc:
         typer.secho(str(exc), fg="red", err=True)
         raise typer.Exit(1) from exc
     if not rows:

@@ -120,3 +120,19 @@ def test_default_source_requires_api_key(monkeypatch):
     monkeypatch.delenv("ETSY_API_KEY", raising=False)
     with pytest.raises(ValueError, match="ETSY_API_KEY"):
         run("adhd notebook", on_progress=lambda _: None)
+
+
+def test_rejected_key_gives_actionable_error():
+    import pytest
+
+    from etsy_scout.etsy_api import EtsyApiError
+
+    client = httpx.Client(
+        base_url="https://openapi.etsy.com/v3/application",
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(403, json={"error": "API key not found or not active"})
+        ),
+    )
+    api = EtsyApi("key", "secret", client=client, min_interval=0)
+    with pytest.raises(EtsyApiError, match="developers/your-apps"):
+        run("adhd notebook", source="api", api=api, on_progress=lambda _: None)

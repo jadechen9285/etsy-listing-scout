@@ -9,6 +9,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from etsy_scout.browser import BlockedError
+from etsy_scout.etsy_api import EtsyApiError
 from etsy_scout.export import excel_bytes, slugify, to_dataframe
 from etsy_scout.pipeline import run
 
@@ -48,7 +49,7 @@ if submitted and keyword.strip():
             source=source,
             on_progress=log.write,
         )
-    except (BlockedError, ValueError) as exc:
+    except (BlockedError, EtsyApiError, ValueError) as exc:
         log.update(label="Stopped", state="error")
         st.error(str(exc))
         st.stop()
