@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 etsy-scout = "etsy_scout.cli:app"
+etsy-trends = "etsy_scout.trends.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.12.0,<0.13.0"]

@@ -74,7 +74,11 @@ class EtsyApi:
     # --- endpoints -----------------------------------------------------------
 
     def search(self, keyword: str, limit: int = 100, offset: int = 0) -> list[dict]:
-        data = self._get(
+        return self.search_page(keyword, limit, offset).get("results", [])
+
+    def search_page(self, keyword: str, limit: int = 100, offset: int = 0) -> dict:
+        """Raw search response: {"count": total matches, "results": [...]}."""
+        return self._get(
             "/listings/active",
             {
                 "keywords": keyword,
@@ -84,7 +88,6 @@ class EtsyApi:
                 "sort_order": "desc",
             },
         )
-        return data.get("results", [])
 
     def listings_batch(self, listing_ids: list[str]) -> dict[str, dict]:
         out: dict[str, dict] = {}
