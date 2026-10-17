@@ -17,3 +17,6 @@ data/
 
 # Editor settings
 .vscode/
+
+# macOS
+.DS_Store
