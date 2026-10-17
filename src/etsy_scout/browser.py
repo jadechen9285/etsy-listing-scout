@@ -50,6 +50,7 @@ class EtsyBrowser:
         self._pw = None
         self._ctx: BrowserContext | None = None
         self._page: Page | None = None
+        self._dump_count = 0
 
     def __enter__(self) -> EtsyBrowser:
         self._pw = sync_playwright().start()
@@ -82,7 +83,14 @@ class EtsyBrowser:
         # Let lazy content (prices, badges) settle a little.
         self._page.mouse.wheel(0, 1500)
         self._page.wait_for_timeout(800)
-        return self._page.content()
+        html = self._page.content()
+        if dump_dir := os.getenv("ETSY_SCOUT_DUMP_DIR"):
+            # Debug aid: keep raw pages so selectors can be fixed against real markup.
+            self._dump_count += 1
+            path = Path(dump_dir) / f"{self._dump_count:03d}.html"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"<!-- {url} -->\n{html}")
+        return html
 
     def _wait_for_human_check(self, url: str) -> str:
         assert self._page is not None
