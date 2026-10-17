@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from .browser import BlockedError
 from .export import to_dataframe, write_outputs
-from .pipeline import run
+from .pipeline import SOURCES, run
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
@@ -22,16 +22,21 @@ def scout(
     include_digital: Annotated[
         bool, typer.Option("--include-digital", help="Keep digital downloads in results")
     ] = False,
-    source: Annotated[str, typer.Option(help="auto | browser | api (see README)")] = "auto",
+    source: Annotated[
+        str, typer.Option(help="api (default) | hybrid, browser (experimental; see README)")
+    ] = "api",
     headful: Annotated[
         bool | None,
-        typer.Option("--headful/--headless", help="Show the Chrome window (default: shown)"),
+        typer.Option(
+            "--headful/--headless",
+            help="Experimental sources: show Chrome (default)",
+        ),
     ] = None,
     out: Annotated[Path, typer.Option(help="Output folder")] = Path("output"),
 ) -> None:
     load_dotenv()
-    if source not in ("auto", "browser", "api"):
-        raise typer.BadParameter("source must be auto, browser, or api")
+    if source not in SOURCES:
+        raise typer.BadParameter(f"source must be one of: {', '.join(SOURCES)}")
     try:
         rows = run(
             keyword,

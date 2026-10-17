@@ -16,8 +16,8 @@ load_dotenv()
 st.set_page_config(page_title="Etsy Listing Scout", layout="wide")
 st.title("Etsy Listing Scout")
 st.caption(
-    "Top Etsy search results for a keyword, in the competitor_listing format. "
-    "If Etsy shows a verification check, solve it in the Chrome window that opens."
+    "Top Etsy search results for a keyword, in the competitor_listing format, "
+    "from the Etsy Open API."
 )
 
 has_key = bool(os.getenv("ETSY_API_KEY"))
@@ -27,13 +27,16 @@ with st.form("search"):
     top_n = c1.slider("Top N", 1, 100, 20)
     source = c2.selectbox(
         "Data source",
-        ["auto", "browser", "api"],
-        help="auto: etsy.com ranking, filled from the API when ETSY_API_KEY is set.",
+        ["api", "hybrid", "browser"],
+        help="api: Etsy Open API (needs ETSY_API_KEY). hybrid/browser are experimental: "
+        "Etsy usually blocks automated Chrome.",
     )
     include_digital = c3.checkbox("Include digital downloads", value=False)
     submitted = st.form_submit_button("Run", type="primary")
 
 st.sidebar.markdown(f"**Etsy API key:** {'found' if has_key else 'not set'}")
+if not has_key:
+    st.warning("Set ETSY_API_KEY in .env to use the default api source (see README).")
 
 if submitted and keyword.strip():
     log = st.status("Running...", expanded=True)

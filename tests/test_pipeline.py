@@ -112,3 +112,11 @@ def test_export_matches_template_columns():
     assert set(df["is_ad"]) == {"F"}
     back = pd.read_excel(__import__("io").BytesIO(excel_bytes(df)), sheet_name="competitor_listing")
     assert len(back) == 2 and back.loc[0, "listing_link"] == "https://www.etsy.com/listing/1/a"
+
+
+def test_default_source_requires_api_key(monkeypatch):
+    import pytest
+
+    monkeypatch.delenv("ETSY_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="ETSY_API_KEY"):
+        run("adhd notebook", on_progress=lambda _: None)

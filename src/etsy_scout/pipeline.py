@@ -1,11 +1,11 @@
-"""Turn a keyword into ranked ListingRows by combining the browser scraper and the API.
+"""Turn a keyword into ranked ListingRows.
 
 Sources:
-- "auto" (default): ranks come from the etsy.com search page (what shoppers see).
-  With an API key, every other column comes from the API, so only the search page is
-  loaded. Without a key, each listing page and shop page is loaded too.
-- "browser": never call the API.
-- "api": never open a browser; ranks follow the API's relevance order.
+- "api" (default): Etsy Open API v3 only. Needs ETSY_API_KEY. Ranks follow the API's
+  relevance order, which is close to, but not the same as, etsy.com.
+- "hybrid" (experimental): ranks from the etsy.com search page, other columns from the API.
+- "browser" (experimental): etsy.com pages only, no API. Etsy's bot protection usually
+  blocks automated Chrome, so expect this to fail.
 """
 
 from __future__ import annotations
@@ -21,7 +21,12 @@ from .models import ListingDetails, ListingRow, SearchHit, ShopStats
 from .search_scraper import scrape_search
 from .shop_scraper import scrape_shop
 
-Source = Literal["auto", "browser", "api"]
+Source = Literal["api", "hybrid", "browser"]
+SOURCES: tuple[str, ...] = ("api", "hybrid", "browser")
+NO_KEY_MESSAGE = (
+    "No Etsy API key found. Set ETSY_API_KEY (and ETSY_SHARED_SECRET) in .env; "
+    "see README > Etsy API key. Or try the experimental --source browser."
+)
 
 
 def filter_label(exclude_digital: bool) -> str:
@@ -69,15 +74,15 @@ def run(
     keyword: str,
     top_n: int = 20,
     exclude_digital: bool = True,
-    source: Source = "auto",
+    source: Source = "api",
     api: EtsyApi | None = None,
     headless: bool | None = None,
     on_progress: Callable[[str], None] = print,
 ) -> list[ListingRow]:
     if source != "browser" and api is None:
         api = EtsyApi.from_env()
-    if source == "api" and api is None:
-        raise ValueError("source='api' needs ETSY_API_KEY (see .env.example)")
+    if source != "browser" and api is None:
+        raise ValueError(NO_KEY_MESSAGE)
     if source == "browser":
         api = None
 
