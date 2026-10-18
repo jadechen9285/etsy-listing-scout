@@ -25,7 +25,19 @@ TEMPLATE_COLUMNS = [
     "shop_total_review",
     "shop_total_product",
 ]
-EXTRA_COLUMNS = ["is_ad", "listing_id", "title", "source", "scraped_at"]
+# Popularity, material, and price-detail columns (from the Etsy API).
+LISTING_EXTRA_COLUMNS = [
+    "views",
+    "num_favorers",
+    "tags",
+    "materials",
+    "price_original",
+    "price_currency",
+    "discount_pct",
+    "shipping_cost_usd",
+    "free_shipping",
+]
+EXTRA_COLUMNS = [*LISTING_EXTRA_COLUMNS, "is_ad", "listing_id", "title", "source", "scraped_at"]
 COLUMNS = TEMPLATE_COLUMNS + EXTRA_COLUMNS
 
 
@@ -45,8 +57,25 @@ class SearchHit(BaseModel):
     shop_rating: float | None = None  # stars shown on the card are the shop's average
 
 
-class ListingDetails(BaseModel):
-    """Fields read from a single listing page or the listing API."""
+class ListingExtras(BaseModel):
+    """Listing fields beyond the research sheet: popularity, materials, price details."""
+
+    views: int | None = None  # lifetime listing views
+    num_favorers: int | None = None  # shoppers who favorited the listing
+    tags: list[str] = Field(default_factory=list)
+    materials: list[str] = Field(default_factory=list)
+    price_original: float | None = None  # regular price in the seller's currency
+    price_currency: str | None = None  # seller's currency, e.g. "GBP"
+    discount_pct: float | None = None  # current sale discount, e.g. 25.0
+    shipping_cost_usd: float | None = None  # shipping to a US buyer
+    free_shipping: bool | None = None
+
+
+class ListingDetails(ListingExtras):
+    """Fields read from a single listing page or the listing API.
+
+    `price` and `sale_price` are in USD.
+    """
 
     price: float | None = None
     sale_price: float | None = None
@@ -69,7 +98,7 @@ class ShopStats(BaseModel):
     shop_rating: float | None = None
 
 
-class ListingRow(BaseModel):
+class ListingRow(ListingExtras):
     target_keyword: str
     search_filter: str
     rank: int
@@ -97,5 +126,9 @@ class ListingRow(BaseModel):
         if data["is_best_seller"] is not None:
             data["is_best_seller"] = "T" if data["is_best_seller"] else "F"
         data["is_ad"] = "T" if data["is_ad"] else "F"
+        if data["free_shipping"] is not None:
+            data["free_shipping"] = "T" if data["free_shipping"] else "F"
+        data["tags"] = ", ".join(data["tags"]) or None
+        data["materials"] = ", ".join(data["materials"]) or None
         data["scraped_at"] = self.scraped_at.strftime("%Y-%m-%d %H:%M:%S")
         return {col: data[col] for col in COLUMNS}

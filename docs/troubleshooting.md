@@ -39,7 +39,10 @@ You hit Etsy's rate limit. The client waits and retries automatically, so lower 
 
 | Column | Why | What to do |
 |---|---|---|
-| `on_sales_price_dollar`, `is_best_seller` | the Etsy API doesn't provide sale prices or the Bestseller badge | expected with `--source api` |
+| `is_best_seller` | the Etsy API doesn't provide the Bestseller badge | expected with `--source api` |
+| `on_sales_price_dollar` | the listing isn't on sale | expected |
+| `price_dollar` for non-USD sellers | the exchange-rate service (frankfurter.dev) was unreachable; a `could not load exchange rates` warning was printed | rerun later. `price_original` and `price_currency` are still filled |
+| `materials` | the seller didn't enter materials | expected; many sellers leave this blank |
 | shop columns | the shop lookup failed for that listing; a `warning:` line was printed during the run | rerun later |
 | RankHero metric columns | RankHero changed its page layout | see [Contributing → When a page layout changes](developer/contributing.md#when-a-page-layout-changes) |
 

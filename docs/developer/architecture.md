@@ -41,6 +41,7 @@ flowchart LR
 | Module | Responsibility |
 |---|---|
 | `etsy_api.py` | Etsy Open API v3 client: API-key auth (`x-api-key: keystring:secret`), throttling, 429 retries, actionable 401/403 errors. Endpoints: `/listings/active` search, `/listings/batch`, `/listings/{id}/reviews`, `/shops/{id}`. Also converts responses into models. |
+| `fx.py` | Currency handling. `money()` parses Etsy money objects into (amount, currency). `FxRates` converts to USD using daily ECB rates from frankfurter.dev, fetched once per instance (`EtsyApi.fx`). |
 | `parsing.py` | Pure helpers: counts like "10.8k", prices, ratings, ages, listing URLs, JSON-LD. |
 | `models.py` | Pydantic models for top listings, and `TEMPLATE_COLUMNS`, the `competitor_listing` column order. |
 
@@ -82,9 +83,11 @@ flowchart LR
 ## Data flow: `etsy-scout --source api`
 
 1. `EtsyApi.search_hits` pages through `/listings/active` (`sort_on=score`), drops digital listings if asked, and assigns ranks.
-2. `EtsyApi.listing_details` makes one `/listings/batch` call (with images, videos, and shop) per 100 IDs, plus one `/reviews` call per listing.
+2. `EtsyApi.listing_details` makes one `/listings/batch` call per 100 IDs, with `includes=Images,Videos,Shop,BuyerPrice` and `buyer_country=US`, plus one `/reviews` call per listing. Prices come from `buyer_price` (regular, sale, shipping), converted to USD by `fx.FxRates`. Views, favorites, tags, and materials come from the same response.
 3. `EtsyApi.shop_stats` makes one `/shops/{id}` call per distinct shop, cached for the run.
-4. `build_row` merges the results, then `export.write_outputs` writes the files.
+4. `build_row` merges the results (API detail prices win over search-card prices), then `export.write_outputs` writes the files.
+
+To see every step with real data, run `notebooks/01_etsy_api_walkthrough.ipynb`.
 
 ## Data flow: `etsy-trends import-rankhero`
 

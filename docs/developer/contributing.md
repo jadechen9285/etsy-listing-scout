@@ -21,8 +21,8 @@ uv add --dev some-package     # dev-only dependency
 
 ```bash
 uv run pytest                        # tests (no network access)
-uv run ruff check . --fix            # lint
-uv run ruff format .                 # format
+uv run ruff check src tests app notebooks/[0-9]*.ipynb --fix   # lint
+uv run ruff format src tests app notebooks/[0-9]*.ipynb        # format
 uv run pre-commit run --all-files    # every hook
 uv run streamlit run app/Top_Listings.py
 uv run jupyter lab
@@ -30,7 +30,9 @@ uv run jupyter lab
 
 ## Notebooks
 
-Put experiments in `notebooks/`. JupyterLab is a dev dependency, so `uv sync` installs it.
+**New to the codebase? Start with [`notebooks/01_etsy_api_walkthrough.ipynb`](../../notebooks/01_etsy_api_walkthrough.ipynb).** It walks through the Etsy API one call at a time (search, listing, prices and currency, popularity and materials, shop, reviews), then the converters and the full pipeline.
+
+Put experiments in `notebooks/`. JupyterLab is a dev dependency, so `uv sync` installs it. Committed tutorial notebooks are numbered (`01_...`) and saved **with outputs cleared**.
 
 ```bash
 uv run jupyter lab            # or open the .ipynb in VS Code
@@ -55,6 +57,7 @@ Tips:
 - The notebook runs from `notebooks/`, so relative paths start there. Use `Path("..") / "output"` for the project's output folder. `load_dotenv()` still finds the project's `.env` by searching parent folders.
 - Changes in `src/` reach the notebook automatically after a kernel restart. To pick them up without restarting, run `%load_ext autoreload` and `%autoreload 2` in the first cell.
 - Clear outputs before committing a notebook, so API data and large outputs don't end up in this public repo.
+- ruff also lints and formats `.ipynb` files. Run it on specific paths (`uv run ruff check src tests app notebooks/01_*.ipynb`) so it doesn't rewrite personal scratch notebooks.
 
 ## pre-commit
 

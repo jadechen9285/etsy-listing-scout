@@ -58,7 +58,7 @@ uv run etsy-trends snapshot            # no keywords: re-snapshot every keyword 
 
 For each keyword, this records:
 - `competing_listings`: Etsy's total number of active listings matching the keyword (all listing types)
-- price stats (min, 25th percentile, median, 75th percentile, max) and price bands for the most relevant listings (100 by default; change it with `--sample-size`)
+- price stats (min, 25th percentile, median, 75th percentile, max) and price bands for the most relevant listings (100 by default; change it with `--sample-size`). These are regular prices converted to USD, as described in [Prices and currency](top-listings.md#prices-and-currency).
 - `avg_favorites` for those listings, a rough demand signal
 
 By default, digital downloads are left out of the price sample. Add `--include-digital` to keep them.

@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from etsy_scout.etsy_api import EtsyApi
+from etsy_scout.fx import FxRates
 from etsy_scout.trends import history
 from etsy_scout.trends.analysis import price_stats, summarize_trend
 from etsy_scout.trends.cli import rankhero_url
@@ -100,7 +101,11 @@ def test_market_snapshot_from_api():
             [
                 {
                     "listing_id": i,
-                    "price": {"amount": 1000 + i * 100, "divisor": 100},
+                    "price": {
+                        "amount": 1000 + i * 100,
+                        "divisor": 100,
+                        "currency_code": "GBP" if i == 2 else "USD",
+                    },
                     "listing_type": "download" if i == 0 else "physical",
                     "num_favorers": 10,
                 }
@@ -112,10 +117,17 @@ def test_market_snapshot_from_api():
         return httpx.Response(200, json={"count": 9876, "results": results})
 
     client = httpx.Client(base_url="https://x", transport=httpx.MockTransport(handler))
-    snap = take_snapshot(EtsyApi("k", client=client, min_interval=0), "focus journal")
+    fx = FxRates(
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda r: httpx.Response(200, json={"rates": {"GBP": 0.5}})
+            )
+        )
+    )
+    snap = take_snapshot(EtsyApi("k", client=client, min_interval=0, fx=fx), "focus journal")
     assert snap.competing_listings == 9876
     assert snap.sample_size == 2  # the digital listing is excluded
-    assert (snap.price_min, snap.price_max) == (11.0, 12.0)
+    assert (snap.price_min, snap.price_max) == (11.0, 24.0)  # 12 GBP -> 24 USD
     assert snap.avg_favorites == 10
 
 

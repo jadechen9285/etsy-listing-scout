@@ -11,6 +11,7 @@ import time
 
 import httpx
 
+from .fx import FxRates, money
 from .models import ListingDetails, SearchHit, ShopStats
 from .parsing import canonical_listing_url, years_since
 
@@ -21,12 +22,6 @@ class EtsyApiError(RuntimeError):
     pass
 
 
-def _money(price: dict | None) -> float | None:
-    if not price or price.get("divisor") in (None, 0):
-        return None
-    return round(price["amount"] / price["divisor"], 2)
-
-
 class EtsyApi:
     def __init__(
         self,
@@ -34,6 +29,7 @@ class EtsyApi:
         shared_secret: str | None = None,
         client: httpx.Client | None = None,
         min_interval: float = 0.25,
+        fx: FxRates | None = None,
     ):
         # Etsy expects "keystring:shared_secret" in x-api-key; older apps take the keystring.
         key = f"{api_key}:{shared_secret}" if shared_secret else api_key
@@ -41,6 +37,14 @@ class EtsyApi:
         self._headers = {"x-api-key": key}
         self._min_interval = min_interval
         self._last_call = 0.0
+        self._fx = fx
+
+    @property
+    def fx(self) -> FxRates:
+        """USD exchange rates, loaded on first use (Etsy prices are in the seller's currency)."""
+        if self._fx is None:
+            self._fx = FxRates()
+        return self._fx
 
     @classmethod
     def from_env(cls) -> EtsyApi | None:
@@ -89,13 +93,22 @@ class EtsyApi:
             },
         )
 
-    def listings_batch(self, listing_ids: list[str]) -> dict[str, dict]:
+    def listings_batch(self, listing_ids: list[str], buyer_country: str = "US") -> dict[str, dict]:
+        """Full listing records, up to 100 per call.
+
+        `BuyerPrice` adds a `buyer_price` block (regular and sale price, discount, shipping
+        cost) as a shopper in `buyer_country` would see it, still in the seller's currency.
+        """
         out: dict[str, dict] = {}
         for i in range(0, len(listing_ids), 100):
             chunk = listing_ids[i : i + 100]
             data = self._get(
                 "/listings/batch",
-                {"listing_ids": ",".join(chunk), "includes": "Images,Videos,Shop"},
+                {
+                    "listing_ids": ",".join(chunk),
+                    "includes": "Images,Videos,Shop,BuyerPrice",
+                    "buyer_country": buyer_country,
+                },
             )
             for item in data.get("results", []):
                 out[str(item["listing_id"])] = item
@@ -132,7 +145,7 @@ class EtsyApi:
                         listing_id=str(item["listing_id"]),
                         url=canonical_listing_url(item.get("url", "")),
                         title=item.get("title"),
-                        price=_money(item.get("price")),
+                        # No price here: prices come from listing_details, converted to USD.
                         shop_id=str(item["shop_id"]) if item.get("shop_id") else None,
                     )
                 )
@@ -148,15 +161,37 @@ class EtsyApi:
             media = len(item.get("images") or []) + len(item.get("videos") or [])
             reviews, stars = self.listing_review_stats(lid)
             out[lid] = ListingDetails(
-                price=_money(item.get("price")),
                 num_photos_video=media or None,
                 reviews=reviews,
                 review_star=stars,
                 shop_id=str(item["shop_id"]) if item.get("shop_id") else None,
                 shop_name=shop.get("shop_name"),
                 is_digital=item.get("listing_type") == "download",
+                views=item.get("views"),
+                num_favorers=item.get("num_favorers"),
+                tags=item.get("tags") or [],
+                materials=item.get("materials") or [],
+                **self._prices(item),
             )
         return out
+
+    def _prices(self, item: dict) -> dict:
+        """USD regular/sale price plus the original amount and currency for one listing."""
+        bp = item.get("buyer_price") or {}
+        regular = money(bp.get("original_price") or item.get("price"))
+        sale = None
+        if bp.get("has_discount") and bp.get("discounted_price"):
+            sale = self.fx.money_to_usd(bp["discounted_price"])
+        shipping = bp.get("shipping_cost")
+        return {
+            "price": self.fx.to_usd(*regular) if regular else None,
+            "sale_price": sale,
+            "price_original": regular[0] if regular else None,
+            "price_currency": regular[1] if regular else None,
+            "discount_pct": bp.get("discount_percentage") if sale is not None else None,
+            "shipping_cost_usd": self.fx.money_to_usd(shipping) if shipping else None,
+            "free_shipping": bp.get("is_free_shipping") if bp else None,
+        }
 
     def shop_stats(self, shop_id: str) -> ShopStats:
         s = self.shop(shop_id)

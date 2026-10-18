@@ -44,8 +44,8 @@ The first 15 columns match the research sheet exactly, in the same order.
 | `search_filter` | `default exclude digital` or `default include digital` | ✅ |
 | `rank` | position in the results (1 = top) | ✅ from the API's relevance order, which is close to etsy.com's order but not identical |
 | `listing_link` | listing URL with tracking parameters removed | ✅ |
-| `price_dollar` | regular price | ✅ |
-| `on_sales_price_dollar` | discounted price when on sale | ❌ empty: the public API doesn't expose sale prices |
+| `price_dollar` | regular price in **USD** | ✅ converted from the seller's currency (see [Prices and currency](#prices-and-currency)) |
+| `on_sales_price_dollar` | sale price in **USD**, when the listing is discounted | ✅ empty when not on sale |
 | `num_photos_video` | number of photos plus videos | ✅ |
 | `reviews` | reviews for this listing | ✅ |
 | `review_star` | the shop's average rating (the stars shown on Etsy search cards) | ✅ |
@@ -60,11 +60,30 @@ These extra columns come after them:
 
 | Column | Meaning |
 |---|---|
+| `views` | lifetime views of the listing |
+| `num_favorers` | shoppers who favorited the listing, a strong interest signal |
+| `tags` | the seller's search tags (up to 13), comma-separated |
+| `materials` | seller-entered materials, comma-separated. Often empty, but valuable for physical products such as jewelry |
+| `price_original` | regular price in the seller's own currency |
+| `price_currency` | the seller's currency, e.g. `GBP` |
+| `discount_pct` | the current sale discount, e.g. `25` |
+| `shipping_cost_usd` | shipping cost to a US buyer, in USD (empty when free or unknown) |
+| `free_shipping` | `T` if shipping to the US is free |
 | `is_ad` | `T` if the result was an ad (browser sources only) |
 | `listing_id` | Etsy listing ID |
 | `title` | listing title |
 | `source` | which source filled the row: `api`, `browser`, or `browser+api` |
 | `scraped_at` | when the row was collected (UTC) |
+
+## Prices and currency
+
+Etsy returns every price in the **seller's own currency**. A UK shop's `11.99` is £11.99, not $11.99. To make prices comparable, the tool:
+
+1. asks Etsy for the price a **US shopper** sees (the `BuyerPrice` data), which includes the regular price, any sale price and discount, and shipping to the US
+2. converts these amounts to USD with the day's European Central Bank reference rates from [frankfurter.dev](https://frankfurter.dev), which is free and needs no key. Rates are fetched once per run.
+3. keeps the unconverted amount in `price_original` and `price_currency`, so you can check any conversion
+
+If the rate service is unreachable, USD prices stay correct for US sellers and are left empty for others, and a warning is printed.
 
 ## Data sources
 
@@ -79,5 +98,6 @@ The experimental sources open your installed Google Chrome. Etsy's bot protectio
 ## Tips
 
 - Keep request volumes modest and follow the [Etsy API Terms of Use](https://www.etsy.com/legal/api). The client throttles itself and retries when Etsy says it's busy (HTTP 429).
-- Each API run makes about 2 + N calls: one search, one batch lookup, one review lookup per listing, and one call per distinct shop.
+- Each API run makes about 2 + 2N calls: one search, one batch lookup, one review lookup per listing, and one call per distinct shop (plus one call for exchange rates).
+- To explore the raw API data yourself, open the walkthrough notebook `notebooks/01_etsy_api_walkthrough.ipynb`.
 - To compare keywords side by side, run once per keyword and combine the CSVs, or paste them into your research workbook.

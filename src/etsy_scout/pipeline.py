@@ -17,7 +17,7 @@ from typing import Literal
 from .browser import BlockedError, EtsyBrowser
 from .etsy_api import EtsyApi
 from .listing_scraper import scrape_listing
-from .models import ListingDetails, ListingRow, SearchHit, ShopStats
+from .models import ListingDetails, ListingExtras, ListingRow, SearchHit, ShopStats
 from .search_scraper import scrape_search
 from .shop_scraper import scrape_shop
 
@@ -50,9 +50,10 @@ def build_row(
         search_filter=search_filter,
         rank=hit.rank,
         listing_link=hit.url,
-        # The search card shows the shopper-facing price; listing/API data fills gaps.
-        price_dollar=_first(hit.price, details.price),
-        on_sales_price_dollar=hit.sale_price if hit.price is not None else details.sale_price,
+        # Listing details (API prices converted to USD) win; search-card prices from the
+        # experimental browser sources are the fallback.
+        price_dollar=_first(details.price, hit.price),
+        on_sales_price_dollar=details.sale_price if details.price is not None else hit.sale_price,
         num_photos_video=details.num_photos_video,
         reviews=details.reviews,
         # Matches the research sheet: the stars on a search card are the shop's average.
@@ -63,6 +64,7 @@ def build_row(
         shop_total_sales=shop.shop_total_sales,
         shop_total_review=shop.shop_total_review,
         shop_total_product=shop.shop_total_product,
+        **details.model_dump(include=set(ListingExtras.model_fields)),
         is_ad=hit.is_ad,
         listing_id=hit.listing_id,
         title=hit.title,

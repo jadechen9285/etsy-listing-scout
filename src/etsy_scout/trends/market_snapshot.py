@@ -5,7 +5,7 @@ from __future__ import annotations
 import statistics
 from datetime import date
 
-from ..etsy_api import EtsyApi, _money
+from ..etsy_api import EtsyApi
 from .analysis import price_stats
 from .models import MarketSnapshot
 
@@ -16,7 +16,8 @@ def take_snapshot(
     """Competing-listing count plus price stats of the top `sample_size` relevant listings.
 
     `competing_listings` is Etsy's total match count for the keyword, which covers all
-    listing types; the digital filter only applies to the price sample.
+    listing types; the digital filter only applies to the price sample. Prices are
+    regular (not sale) prices converted to USD.
     """
     total = None
     items: list[dict] = []
@@ -34,7 +35,8 @@ def take_snapshot(
             items.append(item)
     items = items[:sample_size]
 
-    prices = [p for i in items if (p := _money(i.get("price"))) is not None]
+    # Etsy prices are in each seller's currency; compare them in USD.
+    prices = [p for i in items if (p := api.fx.money_to_usd(i.get("price"))) is not None]
     favorites = [i["num_favorers"] for i in items if i.get("num_favorers") is not None]
     return MarketSnapshot(
         snapshot_date=date.today(),

@@ -16,6 +16,7 @@ Start here. Each guide covers one job.
 
 | Guide | Read it when you want to... |
 |---|---|
+| [API walkthrough notebook](../notebooks/01_etsy_api_walkthrough.ipynb) | explore the Etsy API step by step with real data (start here) |
 | [Architecture](developer/architecture.md) | understand how the modules fit together and where data comes from |
 | [Contributing](developer/contributing.md) | set up a dev environment, run tests, add a feature, and keep these docs current |
 
