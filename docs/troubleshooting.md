@@ -35,6 +35,10 @@ Import the installed package by name: `from etsy_scout.export import to_datafram
 
 You hit Etsy's rate limit. The client waits and retries automatically, so lower `--top-n` or `--sample-size` if it keeps happening.
 
+## Results don't match what I see on etsy.com
+
+That's expected. The data is live, but etsy.com personalizes results, matches by meaning, and mixes in ads, and the public API can't reproduce that. The default `--rank-by popularity` gets much closer by also searching close variants and ranking by favorites and views. To include specific listings, add the words they use with `--related "brain dump pad"`, or add a synonym group in `src/etsy_scout/ranking.py`. See [How results are ranked](user-guide/top-listings.md#how-results-are-ranked).
+
 ## Some columns are empty
 
 | Column | Why | What to do |

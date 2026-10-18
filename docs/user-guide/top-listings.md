@@ -24,6 +24,10 @@ output/adhd_notebook_20261017_141205.csv
 | `--include-digital` | off | Keep digital downloads. By default only physical items are kept, and the sheet's `search_filter` column says `default exclude digital`. |
 | `--source` | `api` | Where the data comes from. See [Data sources](#data-sources). |
 | `--out` | `output` | Folder for the Excel and CSV files. |
+| `--rank-by` | `popularity` | `popularity`: search the keyword plus close variants and rank by favorites, then views, which is closer to etsy.com. `relevance`: the Etsy API's own keyword-match order. See [How results are ranked](#how-results-are-ranked). |
+| `--related` | none | Another keyword to search as well (repeatable), e.g. `--related "brain dump pad"`. Popularity ranking only. |
+| `--pool-size` | `200` | API results collected per query before ranking (20–1000). Larger pools find more listings but cost more API calls. |
+| `--any-language` | off | Keep listings that aren't in English. By default only English listings are kept, as a US shopper would mostly see. |
 | `--headful / --headless` | headful | Experimental browser sources only: show or hide the Chrome window. |
 
 Examples:
@@ -32,6 +36,8 @@ Examples:
 uv run etsy-scout "adhd planner" -n 50
 uv run etsy-scout "adhd planner" --include-digital
 uv run etsy-scout "magnetic planner" --out ~/Desktop/research
+uv run etsy-scout "adhd notebook" --related "brain dump pad" --related "focus planner"
+uv run etsy-scout "adhd notebook" --rank-by relevance     # the API's raw order
 ```
 
 ## Output columns
@@ -42,7 +48,7 @@ The first 15 columns match the research sheet exactly, in the same order.
 |---|---|---|
 | `target_keyword` | the keyword you searched | ✅ |
 | `search_filter` | `default exclude digital` or `default include digital` | ✅ |
-| `rank` | position in the results (1 = top) | ✅ from the API's relevance order, which is close to etsy.com's order but not identical |
+| `rank` | position in the results (1 = top) | ✅ by popularity across the keyword and its variants (see [How results are ranked](#how-results-are-ranked)) |
 | `listing_link` | listing URL with tracking parameters removed | ✅ |
 | `price_dollar` | regular price in **USD** | ✅ converted from the seller's currency (see [Prices and currency](#prices-and-currency)) |
 | `on_sales_price_dollar` | sale price in **USD**, when the listing is discounted | ✅ empty when not on sale |
@@ -69,11 +75,34 @@ These extra columns come after them:
 | `discount_pct` | the current sale discount, e.g. `25` |
 | `shipping_cost_usd` | shipping cost to a US buyer, in USD (empty when free or unknown) |
 | `free_shipping` | `T` if shipping to the US is free |
+| `api_rank` | the listing's position in the Etsy API's own results for `matched_query` |
+| `matched_query` | which search query found the listing, e.g. `adhd notepad` |
 | `is_ad` | `T` if the result was an ad (browser sources only) |
 | `listing_id` | Etsy listing ID |
 | `title` | listing title |
 | `source` | which source filled the row: `api`, `browser`, or `browser+api` |
 | `scraped_at` | when the row was collected (UTC) |
+
+## How results are ranked
+
+**Why API results differ from etsy.com:** the data isn't outdated (the API is live). The two searches work differently:
+
+| | Etsy API | etsy.com search |
+|---|---|---|
+| Matching | literal keyword match on title and tags | by meaning: "adhd notebook" also shows ADHD notepads, planners, and journals |
+| Ranking | text relevance only, with no popularity signal | popularity, buyer behaviour, listing quality, recency, and ads |
+| Personalized | no | yes (location, history, language) |
+
+With the API's own order, the top results for "adhd notebook" were brand-new listings with 0 views (a median of 1 favorite in the top 20), plus non-English and digital listings. The listings a shopper saw at the top of etsy.com didn't contain the words "adhd notebook" at all.
+
+**What `--rank-by popularity` (the default) does:**
+1. **Searches close variants too.** The product noun is swapped for synonyms: "adhd notebook" also searches "adhd diary", "adhd journal", "adhd notepad", and "adhd planner". Your `--related` keywords come right after the original keyword, and at most 6 queries are searched in total.
+2. **Keeps on-topic listings:** they must be physical (unless `--include-digital`) and in English (unless `--any-language`), and mention every core word of the query that found them (for "adhd notebook" that's "adhd") in the title or tags.
+3. **Ranks by popularity:** most favorites first, then most views, then the API's own order.
+
+The result looks much more like what shoppers see: the top 20 for "adhd notebook" went from a median of 1 favorite to 234. It's still an approximation, because etsy.com personalizes results and mixes in ads, so an exact match isn't possible with the public API. `api_rank` and `matched_query` show where each result came from.
+
+The synonym groups live in `PRODUCT_SYNONYMS` in `src/etsy_scout/ranking.py`. Add a group when you research a new product line; jewelry, mugs, stickers, prints, and bags are already covered.
 
 ## Prices and currency
 
@@ -98,6 +127,6 @@ The experimental sources open your installed Google Chrome. Etsy's bot protectio
 ## Tips
 
 - Keep request volumes modest and follow the [Etsy API Terms of Use](https://www.etsy.com/legal/api). The client throttles itself and retries when Etsy says it's busy (HTTP 429).
-- Each API run makes about 2 + 2N calls: one search, one batch lookup, one review lookup per listing, and one call per distinct shop (plus one call for exchange rates).
+- Each run with the default popularity ranking makes about 10 + 2N API calls: 2 search calls per query (about 5 queries), one batch lookup, one review lookup per listing, and one call per distinct shop, plus one call for exchange rates. `--rank-by relevance` needs only 1 search call.
 - To explore the raw API data yourself, open the walkthrough notebook `notebooks/01_etsy_api_walkthrough.ipynb`.
 - To compare keywords side by side, run once per keyword and combine the CSVs, or paste them into your research workbook.

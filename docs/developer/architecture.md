@@ -41,6 +41,7 @@ flowchart LR
 | Module | Responsibility |
 |---|---|
 | `etsy_api.py` | Etsy Open API v3 client: API-key auth (`x-api-key: keystring:secret`), throttling, 429 retries, actionable 401/403 errors. Endpoints: `/listings/active` search, `/listings/batch`, `/listings/{id}/reviews`, `/shops/{id}`. Also converts responses into models. |
+| `ranking.py` | Pure functions that turn API search results into a shopper-like top N: `expand_queries` (keyword + `related` + product-noun synonyms from `PRODUCT_SYNONYMS`), `core_terms` / `is_on_topic`, `popularity_key` (favorites, views, API position), and `rank_candidates`. |
 | `fx.py` | Currency handling. `money()` parses Etsy money objects into (amount, currency). `FxRates` converts to USD using daily ECB rates from frankfurter.dev, fetched once per instance (`EtsyApi.fx`). |
 | `parsing.py` | Pure helpers: counts like "10.8k", prices, ratings, ages, listing URLs, JSON-LD. |
 | `models.py` | Pydantic models for top listings, and `TEMPLATE_COLUMNS`, the `competitor_listing` column order. |
@@ -82,7 +83,7 @@ flowchart LR
 
 ## Data flow: `etsy-scout --source api`
 
-1. `EtsyApi.search_hits` pages through `/listings/active` (`sort_on=score`), drops digital listings if asked, and assigns ranks.
+1. `EtsyApi.search_hits` pages through `/listings/active` (`sort_on=score`) for every query from `ranking.expand_queries` (up to `pool_size` each), merges and deduplicates the results, tags each one with `_api_rank` and `_matched_query`, and ranks them with `ranking.rank_candidates` (on-topic, physical, English; then by favorites and views). With `rank_by="relevance"` it uses only the keyword, in API order.
 2. `EtsyApi.listing_details` makes one `/listings/batch` call per 100 IDs, with `includes=Images,Videos,Shop,BuyerPrice` and `buyer_country=US`, plus one `/reviews` call per listing. Prices come from `buyer_price` (regular, sale, shipping), converted to USD by `fx.FxRates`. Views, favorites, tags, and materials come from the same response.
 3. `EtsyApi.shop_stats` makes one `/shops/{id}` call per distinct shop, cached for the run.
 4. `build_row` merges the results (API detail prices win over search-card prices), then `export.write_outputs` writes the files.

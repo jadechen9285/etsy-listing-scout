@@ -14,6 +14,7 @@ import httpx
 from .fx import FxRates, money
 from .models import ListingDetails, SearchHit, ShopStats
 from .parsing import canonical_listing_url, years_since
+from .ranking import expand_queries, rank_candidates
 
 BASE_URL = "https://openapi.etsy.com/v3/application"
 
@@ -127,31 +128,63 @@ class EtsyApi:
 
     # --- conversions to our models -------------------------------------------
 
-    def search_hits(self, keyword: str, top_n: int, exclude_digital: bool) -> list[SearchHit]:
-        """Top N results in the API's relevance order (which may differ from etsy.com)."""
-        hits: list[SearchHit] = []
+    def search_hits(
+        self,
+        keyword: str,
+        top_n: int,
+        exclude_digital: bool,
+        rank_by: str = "popularity",
+        related: list[str] | None = None,
+        pool_size: int = 200,
+        english_only: bool = True,
+    ) -> list[SearchHit]:
+        """Top N listings for a keyword.
+
+        rank_by="popularity" (default) searches the keyword plus close variants, keeps
+        on-topic English listings, and ranks by favorites then views, which is closer to
+        what etsy.com shows. rank_by="relevance" keeps the API's own order for the keyword
+        only. See ranking.py.
+        """
+        if rank_by == "relevance":
+            items = self._search_pool(keyword, top_n, exclude_digital)
+        else:
+            pool: dict[int, dict] = {}
+            for query in expand_queries(keyword, related):
+                for item in self._search_pool(query, pool_size, exclude_digital=False):
+                    pool.setdefault(item["listing_id"], item)
+            items = rank_candidates(
+                list(pool.values()), keyword, top_n, exclude_digital, english_only
+            )
+        return [
+            SearchHit(
+                rank=rank,
+                listing_id=str(item["listing_id"]),
+                url=canonical_listing_url(item.get("url", "")),
+                title=item.get("title"),
+                # No price here: prices come from listing_details, converted to USD.
+                shop_id=str(item["shop_id"]) if item.get("shop_id") else None,
+                api_rank=item.get("_api_rank"),
+                matched_query=item.get("_matched_query"),
+            )
+            for rank, item in enumerate(items, start=1)
+        ]
+
+    def _search_pool(self, query: str, size: int, exclude_digital: bool) -> list[dict]:
+        """Up to `size` API results for one query, tagged with their API position."""
+        out: list[dict] = []
         offset = 0
-        while len(hits) < top_n and offset < 1000:
-            page = self.search(keyword, limit=100, offset=offset)
+        while len(out) < size and offset < 1000:
+            page = self.search(query, limit=100, offset=offset)
             if not page:
                 break
-            offset += len(page)
             for item in page:
+                offset += 1
+                item["_api_rank"] = offset
+                item["_matched_query"] = query
                 if exclude_digital and item.get("listing_type") == "download":
                     continue
-                hits.append(
-                    SearchHit(
-                        rank=len(hits) + 1,
-                        listing_id=str(item["listing_id"]),
-                        url=canonical_listing_url(item.get("url", "")),
-                        title=item.get("title"),
-                        # No price here: prices come from listing_details, converted to USD.
-                        shop_id=str(item["shop_id"]) if item.get("shop_id") else None,
-                    )
-                )
-                if len(hits) >= top_n:
-                    break
-        return hits
+                out.append(item)
+        return out[:size]
 
     def listing_details(self, listing_ids: list[str]) -> dict[str, ListingDetails]:
         raw = self.listings_batch(listing_ids)

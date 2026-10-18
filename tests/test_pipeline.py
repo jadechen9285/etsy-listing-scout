@@ -60,6 +60,42 @@ BATCH = {
 }
 
 
+BATCH["4"] = {**BATCH["1"], "listing_id": 4, "views": 9000, "num_favorers": 500}
+
+
+def hit(lid, title, favs=0, views=0, listing_type="physical", language="en-US"):
+    return {
+        "listing_id": lid,
+        "url": f"https://www.etsy.com/listing/{lid}/{title.lower().replace(' ', '-')}?ref=x",
+        "title": title,
+        "price": usd(1000),
+        "shop_id": 9,
+        "listing_type": listing_type,
+        "language": language,
+        "num_favorers": favs,
+        "views": views,
+    }
+
+
+# Search results per query. API order for "adhd notebook" is 1, 2, 3; the variants add a
+# more popular journal (4), a duplicate of 1, a French planner (5) and an off-topic one (6).
+SEARCH = {
+    "adhd notebook": [
+        hit(1, "ADHD notebook A", favs=85, views=1200),
+        hit(2, "ADHD notebook printable", favs=900, listing_type="download"),
+        hit(3, "ADHD notebook C", favs=3, views=40),
+    ],
+    "adhd journal": [
+        hit(4, "ADHD journal for adults", favs=500, views=9000),
+        hit(1, "ADHD notebook A", favs=85, views=1200),
+    ],
+    "adhd planner": [
+        hit(5, "Planner TDAH ADHD", favs=700, language="fr"),
+        hit(6, "Undated weekly planner", favs=999),
+    ],
+}
+
+
 def fx_handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"base": "USD", "date": "2026-10-16", "rates": {"GBP": 0.8}})
 
@@ -68,37 +104,10 @@ def handler(request: httpx.Request) -> httpx.Response:
     assert request.headers["x-api-key"] == "key:secret"
     path = request.url.path
     if path.endswith("/listings/active"):
-        return httpx.Response(
-            200,
-            json={
-                "results": [
-                    {
-                        "listing_id": 1,
-                        "url": "https://www.etsy.com/listing/1/a?ref=x",
-                        "title": "A",
-                        "price": {"amount": 1549, "divisor": 100},
-                        "shop_id": 9,
-                        "listing_type": "physical",
-                    },
-                    {
-                        "listing_id": 2,
-                        "url": "https://www.etsy.com/listing/2/b",
-                        "title": "B",
-                        "price": {"amount": 500, "divisor": 100},
-                        "shop_id": 9,
-                        "listing_type": "download",
-                    },
-                    {
-                        "listing_id": 3,
-                        "url": "https://www.etsy.com/listing/3/c",
-                        "title": "C",
-                        "price": {"amount": 2000, "divisor": 100},
-                        "shop_id": 9,
-                        "listing_type": "physical",
-                    },
-                ]
-            },
-        )
+        query = request.url.params["keywords"]
+        offset = int(request.url.params.get("offset", 0))
+        results = SEARCH.get(query, []) if offset == 0 else []
+        return httpx.Response(200, json={"count": len(results), "results": results})
     if path.endswith("/listings/batch"):
         assert "BuyerPrice" in request.url.params["includes"]
         assert request.url.params["buyer_country"] == "US"
@@ -130,11 +139,18 @@ def make_api() -> EtsyApi:
 
 
 def test_api_only_run_skips_digital_and_fills_columns():
-    rows = run("adhd notebook", top_n=2, source="api", api=make_api(), on_progress=lambda _: None)
+    rows = run(
+        "adhd notebook",
+        top_n=2,
+        source="api",
+        api=make_api(),
+        on_progress=lambda _: None,
+        rank_by="relevance",
+    )
     assert [r.listing_id for r in rows] == ["1", "3"]
     assert [r.rank for r in rows] == [1, 2]
     r = rows[0]
-    assert r.listing_link == "https://www.etsy.com/listing/1/a"
+    assert r.listing_link == "https://www.etsy.com/listing/1/adhd-notebook-a"
     assert r.price_dollar == 15.49
     assert r.num_photos_video == 4
     assert r.reviews == 2
@@ -153,7 +169,14 @@ def test_api_only_run_skips_digital_and_fills_columns():
 
 
 def test_non_usd_prices_are_converted_and_sales_detected():
-    rows = run("adhd notebook", top_n=2, source="api", api=make_api(), on_progress=lambda _: None)
+    rows = run(
+        "adhd notebook",
+        top_n=2,
+        source="api",
+        api=make_api(),
+        on_progress=lambda _: None,
+        rank_by="relevance",
+    )
     gbp = rows[1]
     assert (gbp.price_original, gbp.price_currency) == (16.0, "GBP")
     assert gbp.price_dollar == 20.0  # 16 GBP / 0.8
@@ -163,7 +186,14 @@ def test_non_usd_prices_are_converted_and_sales_detected():
 
 
 def test_export_matches_template_columns():
-    rows = run("adhd notebook", top_n=2, source="api", api=make_api(), on_progress=lambda _: None)
+    rows = run(
+        "adhd notebook",
+        top_n=2,
+        source="api",
+        api=make_api(),
+        on_progress=lambda _: None,
+        rank_by="relevance",
+    )
     df = to_dataframe(rows)
     assert list(df.columns[: len(TEMPLATE_COLUMNS)]) == TEMPLATE_COLUMNS
     assert list(df.columns) == COLUMNS
@@ -172,7 +202,35 @@ def test_export_matches_template_columns():
     assert df.loc[0, "materials"] == "paper, cardstock"
     assert list(df["free_shipping"]) == ["F", "T"]
     back = pd.read_excel(__import__("io").BytesIO(excel_bytes(df)), sheet_name="competitor_listing")
-    assert len(back) == 2 and back.loc[0, "listing_link"] == "https://www.etsy.com/listing/1/a"
+    assert (
+        len(back) == 2
+        and back.loc[0, "listing_link"] == "https://www.etsy.com/listing/1/adhd-notebook-a"
+    )
+
+
+def test_popularity_ranking_merges_variants_and_filters():
+    rows = run("adhd notebook", top_n=5, source="api", api=make_api(), on_progress=lambda _: None)
+    # 2 is digital, 5 is French, 6 doesn't mention "adhd"; 1 appears twice but once here.
+    assert [r.listing_id for r in rows] == ["4", "1", "3"]
+    assert [r.rank for r in rows] == [1, 2, 3]
+    assert [(r.matched_query, r.api_rank) for r in rows] == [
+        ("adhd journal", 1),
+        ("adhd notebook", 1),
+        ("adhd notebook", 3),
+    ]
+
+
+def test_relevance_ranking_keeps_api_order():
+    rows = run(
+        "adhd notebook",
+        top_n=5,
+        source="api",
+        api=make_api(),
+        on_progress=lambda _: None,
+        rank_by="relevance",
+    )
+    assert [r.listing_id for r in rows] == ["1", "3"]
+    assert [r.api_rank for r in rows] == [1, 3]
 
 
 def test_default_source_requires_api_key(monkeypatch):

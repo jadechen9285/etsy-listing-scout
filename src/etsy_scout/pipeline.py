@@ -1,8 +1,9 @@
 """Turn a keyword into ranked ListingRows.
 
 Sources:
-- "api" (default): Etsy Open API v3 only. Needs ETSY_API_KEY. Ranks follow the API's
-  relevance order, which is close to, but not the same as, etsy.com.
+- "api" (default): Etsy Open API v3 only. Needs ETSY_API_KEY. With rank_by="popularity"
+  (default) results come from the keyword plus close variants, ranked by favorites and
+  views (see ranking.py); rank_by="relevance" keeps the API's literal-match order.
 - "hybrid" (experimental): ranks from the etsy.com search page, other columns from the API.
 - "browser" (experimental): etsy.com pages only, no API. Etsy's bot protection usually
   blocks automated Chrome, so expect this to fail.
@@ -18,11 +19,14 @@ from .browser import BlockedError, EtsyBrowser
 from .etsy_api import EtsyApi
 from .listing_scraper import scrape_listing
 from .models import ListingDetails, ListingExtras, ListingRow, SearchHit, ShopStats
+from .ranking import expand_queries
 from .search_scraper import scrape_search
 from .shop_scraper import scrape_shop
 
 Source = Literal["api", "hybrid", "browser"]
 SOURCES: tuple[str, ...] = ("api", "hybrid", "browser")
+RankBy = Literal["popularity", "relevance"]
+RANK_BY: tuple[str, ...] = ("popularity", "relevance")
 NO_KEY_MESSAGE = (
     "No Etsy API key found. Set ETSY_API_KEY (and ETSY_SHARED_SECRET) in .env; "
     "see README > Etsy API key. Or try the experimental --source browser."
@@ -65,6 +69,8 @@ def build_row(
         shop_total_review=shop.shop_total_review,
         shop_total_product=shop.shop_total_product,
         **details.model_dump(include=set(ListingExtras.model_fields)),
+        api_rank=hit.api_rank,
+        matched_query=hit.matched_query,
         is_ad=hit.is_ad,
         listing_id=hit.listing_id,
         title=hit.title,
@@ -80,6 +86,10 @@ def run(
     api: EtsyApi | None = None,
     headless: bool | None = None,
     on_progress: Callable[[str], None] = print,
+    rank_by: RankBy = "popularity",
+    related: list[str] | None = None,
+    pool_size: int = 200,
+    english_only: bool = True,
 ) -> list[ListingRow]:
     if source != "browser" and api is None:
         api = EtsyApi.from_env()
@@ -99,7 +109,18 @@ def run(
         if use_browser:
             hits = scrape_search(browser, keyword, top_n, exclude_digital)
         else:
-            hits = api.search_hits(keyword, top_n, exclude_digital)
+            if rank_by == "popularity":
+                queries = expand_queries(keyword, related)
+                on_progress(f"Searching {len(queries)} queries: {', '.join(queries)}")
+            hits = api.search_hits(
+                keyword,
+                top_n,
+                exclude_digital,
+                rank_by=rank_by,
+                related=related,
+                pool_size=pool_size,
+                english_only=english_only,
+            )
         on_progress(f"Found {len(hits)} listings.")
         if not hits:
             return []

@@ -12,6 +12,7 @@ Then open <http://localhost:8501>. Stop it with Ctrl+C in the terminal.
 
 1. Type a **Search keyword**.
 2. Pick **Top N**, the **Data source** (`api` is recommended; see [data sources](top-listings.md#data-sources)), and whether to **Include digital downloads**.
+   Choose **Rank by** (`popularity` is closer to etsy.com; see [how results are ranked](top-listings.md#how-results-are-ranked)), and optionally add **Related keywords**, separated by commas.
 3. Click **Run**. Progress messages appear while it works.
 4. Review the table (listing links are clickable), then click **Download Excel** or **Download CSV**.
 

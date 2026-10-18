@@ -33,6 +33,18 @@ with st.form("search"):
         "Etsy usually blocks automated Chrome.",
     )
     include_digital = c3.checkbox("Include digital downloads", value=False)
+    c4, c5 = st.columns([1, 2])
+    rank_by = c4.selectbox(
+        "Rank by",
+        ["popularity", "relevance"],
+        help="popularity: searches the keyword plus close variants (e.g. notebook -> journal, "
+        "planner) and ranks by favorites, then views. Closer to etsy.com. "
+        "relevance: the Etsy API's literal keyword-match order.",
+    )
+    related_text = c5.text_input(
+        "Related keywords (optional, comma-separated)",
+        placeholder="brain dump pad, focus planner",
+    )
     submitted = st.form_submit_button("Run", type="primary")
 
 st.sidebar.markdown(f"**Etsy API key:** {'found' if has_key else 'not set'}")
@@ -48,6 +60,8 @@ if submitted and keyword.strip():
             exclude_digital=not include_digital,
             source=source,
             on_progress=log.write,
+            rank_by=rank_by,
+            related=[k.strip() for k in related_text.split(",") if k.strip()],
         )
     except (BlockedError, EtsyApiError, ValueError) as exc:
         log.update(label="Stopped", state="error")

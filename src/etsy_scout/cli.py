@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from .browser import BlockedError
 from .etsy_api import EtsyApiError
 from .export import to_dataframe, write_outputs
-from .pipeline import SOURCES, run
+from .pipeline import RANK_BY, SOURCES, run
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
@@ -34,10 +34,29 @@ def scout(
         ),
     ] = None,
     out: Annotated[Path, typer.Option(help="Output folder")] = Path("output"),
+    rank_by: Annotated[
+        str,
+        typer.Option(
+            help="popularity (default): keyword + close variants, ranked by favorites/views, "
+            "closer to etsy.com | relevance: the API's literal-match order"
+        ),
+    ] = "popularity",
+    related: Annotated[
+        list[str] | None,
+        typer.Option(help="Extra keyword to search too (repeatable; popularity ranking only)"),
+    ] = None,
+    pool_size: Annotated[
+        int, typer.Option(min=20, max=1000, help="API results pooled per query before ranking")
+    ] = 200,
+    any_language: Annotated[
+        bool, typer.Option("--any-language", help="Keep non-English listings")
+    ] = False,
 ) -> None:
     load_dotenv()
     if source not in SOURCES:
         raise typer.BadParameter(f"source must be one of: {', '.join(SOURCES)}")
+    if rank_by not in RANK_BY:
+        raise typer.BadParameter(f"rank-by must be one of: {', '.join(RANK_BY)}")
     try:
         rows = run(
             keyword,
@@ -46,6 +65,10 @@ def scout(
             source=source,  # type: ignore[arg-type]
             headless=None if headful is None else not headful,
             on_progress=lambda msg: typer.echo(msg, err=True),
+            rank_by=rank_by,  # type: ignore[arg-type]
+            related=related,
+            pool_size=pool_size,
+            english_only=not any_language,
         )
     except (BlockedError, EtsyApiError, ValueError) as exc:
         typer.secho(str(exc), fg="red", err=True)
