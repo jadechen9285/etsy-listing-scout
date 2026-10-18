@@ -1,6 +1,6 @@
 # Top listings (`etsy-scout`)
 
-Give `etsy-scout` a search keyword. It returns the top N Etsy listings for it, with pricing, reviews, and shop stats, in the same columns as the `competitor_listing` sheet of the market-research workbook.
+Give `etsy-scout` one or more search keywords. It returns the top N Etsy listings for each, with pricing, reviews, and shop stats, in the same columns as the `competitor_listing` sheet of the market-research workbook. Several keywords are combined into **one** CSV and Excel file.
 
 ## Quick start
 
@@ -19,8 +19,9 @@ output/adhd_notebook_20261017_141205.csv
 
 | Option | Default | What it does |
 |---|---|---|
-| `KEYWORD` | required | The Etsy search keyword. Quote it if it has spaces. |
-| `--top-n`, `-n` | `20` | How many listings to return (1–200). |
+| `KEYWORDS...` | required* | One or more Etsy search keywords. Quote each one that has spaces. |
+| `--keywords-file` | none | A text file with one keyword per line, or a `.csv` with keywords in the first column. Can be combined with `KEYWORDS`. *Either keywords or this file is required. |
+| `--top-n`, `-n` | `20` | How many listings to return per keyword (1–200). |
 | `--include-digital` | off | Keep digital downloads. By default only physical items are kept, and the sheet's `search_filter` column says `default exclude digital`. |
 | `--source` | `api` | Where the data comes from. See [Data sources](#data-sources). |
 | `--out` | `output` | Folder for the Excel and CSV files. |
@@ -77,11 +78,41 @@ These extra columns come after them:
 | `free_shipping` | `T` if shipping to the US is free |
 | `api_rank` | the listing's position in the Etsy API's own results for `matched_query` |
 | `matched_query` | which search query found the listing, e.g. `adhd notepad` |
+| `rank_method` | how `rank` was produced: `popularity` or `relevance` (Etsy API, see [`--rank-by`](#how-results-are-ranked)), or `website` (etsy.com page order, experimental browser sources) |
 | `is_ad` | `T` if the result was an ad (browser sources only) |
 | `listing_id` | Etsy listing ID |
 | `title` | listing title |
 | `source` | which source filled the row: `api`, `browser`, or `browser+api` |
 | `scraped_at` | when the row was collected (UTC) |
+
+## Several keywords at once
+
+Pass several keywords, a keyword file, or both. Every keyword gets its own top N, and all rows go into one combined file:
+
+```bash
+uv run etsy-scout "adhd notebook" "magnetic planner" "14k gold filled necklace" -n 10
+uv run etsy-scout --keywords-file keywords.txt
+```
+
+`keywords.txt` holds one keyword per line, or comma-separated. Blank lines and lines starting with `#` are ignored, and duplicates (ignoring case) are removed:
+
+```
+# stationery
+adhd notebook, magnetic planner
+# jewelry
+14k gold filled necklace
+```
+
+The output is `output/<first keyword>_and_<N-1>_more_<timestamp>.csv` and `.xlsx`.
+- The **CSV** has every listing row. Filter or pivot on `target_keyword`; `rank` restarts at 1 for each keyword.
+- The **Excel** file has the same rows in `competitor_listing`, plus a `keyword_summary` sheet with one row per keyword: listings, rank method, median/min/max price, share on sale, and median favorites, reviews, and shop sales.
+
+**Limits**
+- At most **50 keywords** per batch. Each keyword costs about 10 + 2 × top N Etsy API calls with popularity ranking, and Etsy limits calls per day, so the CLI and web app show an estimate before running. Shops shared between keywords are looked up only once.
+- Up to 50 × 200 = 10,000 rows, well within Excel's limit. If a result were ever too big for Excel, only the CSV is written.
+- If one keyword fails (for example, a temporary Etsy error), it's reported and the others still finish. A rejected API key stops the batch.
+
+**Tip:** with popularity ranking, keywords whose product nouns are synonyms ("adhd notebook" and "adhd planner") search the same variants and can return the same top N. To compare such keywords on their own words, use `--rank-by relevance`.
 
 ## How results are ranked
 

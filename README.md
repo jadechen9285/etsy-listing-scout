@@ -2,7 +2,7 @@
 
 Market research for Etsy product lines.
 
-- **`etsy-scout`** finds the top N Etsy listings for a keyword, with price, reviews, and shop stats, in the `competitor_listing` sheet format.
+- **`etsy-scout`** finds the top N Etsy listings for one or more keywords, with price, reviews, and shop stats, in the `competitor_listing` sheet format. Several keywords are combined into one CSV and Excel file.
 - **`etsy-trends`** tracks keyword demand, competition, and prices over time, in the `rankhero_search_trend` sheet format, with history charts.
 - **Web app**: the same features in a browser (Streamlit).
 
@@ -15,6 +15,7 @@ uv sync
 cp .env.example .env          # add your Etsy API key (see docs/getting-started.md)
 
 uv run etsy-scout "adhd notebook" --top-n 20
+uv run etsy-scout "adhd notebook" "magnetic planner" "14k gold filled necklace"   # one combined file
 uv run etsy-trends urls "adhd planner" --open      # save the page, then:
 uv run etsy-trends import-rankhero ~/Downloads/rankhero
 uv run etsy-trends snapshot "adhd planner"

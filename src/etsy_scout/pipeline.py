@@ -11,12 +11,16 @@ Sources:
 
 from __future__ import annotations
 
+import csv
+import io
+import math
 from collections.abc import Callable
 from contextlib import nullcontext
+from dataclasses import dataclass, field
 from typing import Literal
 
 from .browser import BlockedError, EtsyBrowser
-from .etsy_api import EtsyApi
+from .etsy_api import EtsyApi, EtsyAuthError
 from .listing_scraper import scrape_listing
 from .models import ListingDetails, ListingExtras, ListingRow, SearchHit, ShopStats
 from .ranking import expand_queries
@@ -27,6 +31,7 @@ Source = Literal["api", "hybrid", "browser"]
 SOURCES: tuple[str, ...] = ("api", "hybrid", "browser")
 RankBy = Literal["popularity", "relevance"]
 RANK_BY: tuple[str, ...] = ("popularity", "relevance")
+MAX_KEYWORDS = 50  # per batch; each keyword costs about 10 + 2 * top_n API calls
 NO_KEY_MESSAGE = (
     "No Etsy API key found. Set ETSY_API_KEY (and ETSY_SHARED_SECRET) in .env; "
     "see README > Etsy API key. Or try the experimental --source browser."
@@ -71,6 +76,7 @@ def build_row(
         **details.model_dump(include=set(ListingExtras.model_fields)),
         api_rank=hit.api_rank,
         matched_query=hit.matched_query,
+        rank_method=hit.rank_method,
         is_ad=hit.is_ad,
         listing_id=hit.listing_id,
         title=hit.title,
@@ -90,7 +96,9 @@ def run(
     related: list[str] | None = None,
     pool_size: int = 200,
     english_only: bool = True,
+    shop_cache: dict[str, ShopStats] | None = None,
 ) -> list[ListingRow]:
+    """Top N listings for one keyword. Pass `shop_cache` to share shop lookups across runs."""
     if source != "browser" and api is None:
         api = EtsyApi.from_env()
     if source != "browser" and api is None:
@@ -130,7 +138,8 @@ def run(
             on_progress("Fetching listing details from the Etsy API...")
             details = api.listing_details([h.listing_id for h in hits])
 
-        shop_cache: dict[str, ShopStats] = {}
+        if shop_cache is None:
+            shop_cache = {}
         rows: list[ListingRow] = []
         for hit in hits:
             on_progress(f"[{hit.rank}/{len(hits)}] {hit.url}")
@@ -155,3 +164,112 @@ def run(
                 d, shop = d or ListingDetails(), ShopStats()
             rows.append(build_row(keyword, label, hit, d, shop, row_source))
     return rows
+
+
+# --- several keywords at once ------------------------------------------------------
+
+
+def parse_keywords(text: str) -> list[str]:
+    """Keywords from free text: one per line and/or comma-separated.
+
+    Blank lines and lines starting with `#` are skipped; duplicates (ignoring case and
+    extra spaces) are dropped, keeping the first spelling.
+    """
+    seen: dict[str, str] = {}
+    for line in text.splitlines():
+        if line.strip().startswith("#"):
+            continue
+        for part in line.split(","):
+            kw = " ".join(part.split())
+            if kw:
+                seen.setdefault(kw.lower(), kw)
+    return list(seen.values())
+
+
+def keywords_from_file(name: str, data: bytes) -> list[str]:
+    """Keywords from an uploaded .txt (one per line) or .csv (first column) file."""
+    text = data.decode("utf-8-sig", errors="replace")
+    if not name.lower().endswith(".csv"):
+        return parse_keywords(text)
+    first_column = [row[0] for row in csv.reader(io.StringIO(text)) if row]
+    if first_column and first_column[0].strip().lower() in ("keyword", "keywords"):
+        first_column = first_column[1:]
+    return parse_keywords("\n".join(first_column))
+
+
+def estimate_api_calls(
+    keywords: list[str],
+    top_n: int,
+    rank_by: str = "popularity",
+    related: list[str] | None = None,
+    pool_size: int = 200,
+) -> int:
+    """Upper-bound estimate of Etsy API calls for a batch (shared shops make it lower)."""
+    pages = math.ceil(pool_size / 100)
+    total = 0
+    for kw in keywords:
+        if rank_by == "popularity":
+            searches = len(expand_queries(kw, related)) * pages
+        else:
+            searches = math.ceil(top_n / 100)
+        batch = math.ceil(top_n / 100)
+        total += searches + batch + top_n * 2  # reviews + shops per listing
+    return total
+
+
+@dataclass
+class BatchResult:
+    rows: list[ListingRow] = field(default_factory=list)
+    per_keyword: dict[str, int] = field(default_factory=dict)  # keyword -> rows found
+    failed: dict[str, str] = field(default_factory=dict)  # keyword -> error message
+
+
+def run_many(
+    keywords: list[str],
+    *,
+    api: EtsyApi | None = None,
+    source: Source = "api",
+    on_progress: Callable[[str], None] = print,
+    **run_kwargs,
+) -> BatchResult:
+    """Run several keywords and combine the rows into one result.
+
+    One API client (one exchange-rate fetch) and one shop cache are shared by every
+    keyword. A rejected API key or an Etsy bot check stops the batch; any other error
+    is recorded for that keyword and the batch continues.
+    """
+    keywords = parse_keywords("\n".join(keywords))
+    if not keywords:
+        raise ValueError("No keywords given.")
+    if len(keywords) > MAX_KEYWORDS:
+        raise ValueError(
+            f"{len(keywords)} keywords is more than the {MAX_KEYWORDS} allowed per batch "
+            "(Etsy limits daily API calls). Split the list into smaller batches."
+        )
+    if source != "browser" and api is None:
+        api = EtsyApi.from_env()
+        if api is None:
+            raise ValueError(NO_KEY_MESSAGE)
+
+    result = BatchResult()
+    shop_cache: dict[str, ShopStats] = {}
+    for i, kw in enumerate(keywords, start=1):
+        on_progress(f"[{i}/{len(keywords)}] {kw}")
+        try:
+            rows = run(
+                kw,
+                api=api,
+                source=source,
+                on_progress=on_progress,
+                shop_cache=shop_cache,
+                **run_kwargs,
+            )
+        except (EtsyAuthError, BlockedError):
+            raise
+        except Exception as exc:  # one failing keyword shouldn't sink the batch
+            result.failed[kw] = f"{type(exc).__name__}: {exc}"
+            on_progress(f"  warning: {kw!r} failed: {result.failed[kw]}")
+            continue
+        result.rows.extend(rows)
+        result.per_keyword[kw] = len(rows)
+    return result

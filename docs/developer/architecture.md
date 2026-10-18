@@ -51,7 +51,7 @@ flowchart LR
 | Module | Responsibility |
 |---|---|
 | `cli.py` | Typer command, option validation, and user-facing errors. |
-| `pipeline.py` | `run(keyword, top_n, source, ...)`: picks the sources, collects `SearchHit` + `ListingDetails` + `ShopStats`, caches shops, and merges everything into `ListingRow` with `build_row`. The precedence rules live in `build_row`. |
+| `pipeline.py` | `run(keyword, top_n, source, ...)`: picks the sources, collects `SearchHit` + `ListingDetails` + `ShopStats`, caches shops, and merges everything into `ListingRow` with `build_row`. The precedence rules live in `build_row`. `run_many(keywords, ...)` runs a batch with a shared API client and shop cache; `parse_keywords`, `keywords_from_file`, and `estimate_api_calls` support it. |
 | `export.py` | Builds the DataFrame in `COLUMNS` order and writes `.xlsx` (sheet `competitor_listing`) and `.csv`. |
 | `browser.py` | *Experimental.* Playwright session on system Chrome with a persistent profile, block detection, and a pause so the user can clear a check. Never solves CAPTCHAs. |
 | `search_scraper.py`, `listing_scraper.py`, `shop_scraper.py` | *Experimental.* Each has a pure `parse_*_page(html)` function (tested on fixtures) and a thin `scrape_*` wrapper. |
@@ -89,6 +89,10 @@ flowchart LR
 4. `build_row` merges the results (API detail prices win over search-card prices), then `export.write_outputs` writes the files.
 
 To see every step with real data, run `notebooks/01_etsy_api_walkthrough.ipynb`.
+
+## Data flow: several keywords
+
+`cli.scout` and `app/Top_Listings.py` collect keywords with `pipeline.parse_keywords` / `keywords_from_file`, show `estimate_api_calls`, and call `pipeline.run_many`. `run_many` deduplicates the keywords, enforces `MAX_KEYWORDS` (50), and calls `run()` once per keyword with **one shared `EtsyApi`** (one exchange-rate fetch) and **one shared shop cache**. `EtsyAuthError` (401/403) and `BlockedError` stop the batch; other errors are recorded in `BatchResult.failed` and the batch continues. `export.write_outputs(..., summary=True)` writes one combined CSV, plus an Excel file with `competitor_listing` and `keyword_summary` (`export.summary_frame`).
 
 ## Data flow: `etsy-trends import-rankhero`
 

@@ -38,6 +38,7 @@ LISTING_EXTRA_COLUMNS = [
     "free_shipping",
     "api_rank",
     "matched_query",
+    "rank_method",
 ]
 EXTRA_COLUMNS = [*LISTING_EXTRA_COLUMNS, "is_ad", "listing_id", "title", "source", "scraped_at"]
 COLUMNS = TEMPLATE_COLUMNS + EXTRA_COLUMNS
@@ -59,6 +60,8 @@ class SearchHit(BaseModel):
     shop_rating: float | None = None  # stars shown on the card are the shop's average
     api_rank: int | None = None  # position in the Etsy API's own results for matched_query
     matched_query: str | None = None  # which search query found the listing
+    # How `rank` was produced: "popularity" or "relevance" (Etsy API), "website" (etsy.com).
+    rank_method: str | None = None
 
 
 class ListingExtras(BaseModel):
@@ -120,6 +123,7 @@ class ListingRow(ListingExtras):
     shop_total_product: int | None = None
     api_rank: int | None = None
     matched_query: str | None = None
+    rank_method: str | None = None
     is_ad: bool = False
     listing_id: str
     title: str | None = None

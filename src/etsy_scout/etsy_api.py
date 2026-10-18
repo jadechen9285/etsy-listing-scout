@@ -23,6 +23,10 @@ class EtsyApiError(RuntimeError):
     pass
 
 
+class EtsyAuthError(EtsyApiError):
+    """The API key was rejected (401/403); retrying other keywords won't help."""
+
+
 class EtsyApi:
     def __init__(
         self,
@@ -65,7 +69,7 @@ class EtsyApi:
                 time.sleep(2**attempt)
                 continue
             if resp.status_code in (401, 403):
-                raise EtsyApiError(
+                raise EtsyAuthError(
                     f"Etsy rejected the API key ({resp.status_code}: {resp.text[:200].strip()}). "
                     "Check that your app is approved/active at "
                     "https://www.etsy.com/developers/your-apps and that ETSY_API_KEY is the "
@@ -165,6 +169,7 @@ class EtsyApi:
                 shop_id=str(item["shop_id"]) if item.get("shop_id") else None,
                 api_rank=item.get("_api_rank"),
                 matched_query=item.get("_matched_query"),
+                rank_method=rank_by,
             )
             for rank, item in enumerate(items, start=1)
         ]

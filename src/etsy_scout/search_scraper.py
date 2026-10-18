@@ -119,7 +119,7 @@ def scrape_search(
             break
         for c in new:
             seen.add(c["listing_id"])
-            hits.append(SearchHit(rank=len(hits) + 1, **c))
+            hits.append(SearchHit(rank=len(hits) + 1, rank_method="website", **c))
             if len(hits) >= top_n:
                 return hits
     return hits

@@ -39,6 +39,18 @@ You hit Etsy's rate limit. The client waits and retries automatically, so lower 
 
 That's expected. The data is live, but etsy.com personalizes results, matches by meaning, and mixes in ads, and the public API can't reproduce that. The default `--rank-by popularity` gets much closer by also searching close variants and ranking by favorites and views. To include specific listings, add the words they use with `--related "brain dump pad"`, or add a synonym group in `src/etsy_scout/ranking.py`. See [How results are ranked](user-guide/top-listings.md#how-results-are-ranked).
 
+## "N keywords is more than the 50 allowed per batch"
+
+Split the list into several batches. The cap protects Etsy's daily API limit; each keyword costs about 10 + 2 × top N calls.
+
+## Some keywords failed in a batch
+
+The other keywords still finished and are in the file. The failed ones are printed as `Failed: '<keyword>': ...` (in the web app, as warnings). This is usually a temporary Etsy error, so rerun just those keywords.
+
+## Two keywords returned the same listings
+
+With the default popularity ranking, keywords whose product nouns are synonyms (e.g. "adhd notebook" and "adhd planner") search the same variants. Use `--rank-by relevance` to compare them on their exact words. See [Several keywords at once](user-guide/top-listings.md#several-keywords-at-once).
+
 ## Some columns are empty
 
 | Column | Why | What to do |
