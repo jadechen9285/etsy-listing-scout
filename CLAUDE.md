@@ -10,9 +10,10 @@ uv run pytest
 uv run ruff check . --fix && uv run ruff format .
 uv run pre-commit run --all-files
 uv run streamlit run app/Top_Listings.py
+uv run jupyter lab            # experiments live in notebooks/
 ```
 
-Add dependencies with `uv add` / `uv add --dev`, never pip.
+Add dependencies with `uv add` / `uv add --dev`, never pip. Notebooks import the installed package (`from etsy_scout... import`), never `src.` or relative imports.
 
 ## Rules
 

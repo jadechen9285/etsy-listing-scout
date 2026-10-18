@@ -25,7 +25,38 @@ uv run ruff check . --fix            # lint
 uv run ruff format .                 # format
 uv run pre-commit run --all-files    # every hook
 uv run streamlit run app/Top_Listings.py
+uv run jupyter lab
 ```
+
+## Notebooks
+
+Put experiments in `notebooks/`. JupyterLab is a dev dependency, so `uv sync` installs it.
+
+```bash
+uv run jupyter lab            # or open the .ipynb in VS Code
+```
+
+In VS Code, pick the **`.venv` kernel of this project** (`etsy-listing-scout (3.12)`).
+
+`uv sync` installs the package in editable mode, so import it by its package name. Never use `src.` or relative imports in a notebook:
+
+```python
+from etsy_scout.pipeline import run
+from etsy_scout.export import to_dataframe, write_outputs
+from etsy_scout.trends.rankhero_import import parse_rankhero_page
+```
+
+| Wrong | Why it fails |
+|---|---|
+| `from src.etsy_scout.export import ...` | `src/` is a source folder, not a package, and the notebook's working directory is `notebooks/` |
+| `from .export import ...` | relative imports only work inside a package, not in a notebook |
+
+Tips:
+- The notebook runs from `notebooks/`, so relative paths start there. Use `Path("..") / "output"` for the project's output folder. `load_dotenv()` still finds the project's `.env` by searching parent folders.
+- Changes in `src/` reach the notebook automatically after a kernel restart. To pick them up without restarting, run `%load_ext autoreload` and `%autoreload 2` in the first cell.
+- Clear outputs before committing a notebook, so API data and large outputs don't end up in this public repo.
+
+## pre-commit
 
 pre-commit runs these on every commit: trailing whitespace, end-of-file, YAML/TOML checks, a large-file check, a merge-conflict check, private-key detection, ruff lint and format, and `uv lock --check`. If a hook rewrites a file, stage it and commit again.
 

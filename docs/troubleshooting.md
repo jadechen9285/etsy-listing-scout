@@ -17,6 +17,10 @@ uv run --directory ~/Desktop/projects/github/etsy-listing-scout etsy-trends --he
 
 If it still fails inside the folder, run `uv sync` to reinstall the commands.
 
+## `ModuleNotFoundError: No module named 'src'` (in a notebook)
+
+Import the installed package by name: `from etsy_scout.export import to_dataframe`, not `from src.etsy_scout...` or `from .export ...`. Also check that the notebook uses this project's `.venv` kernel. See [Contributing → Notebooks](developer/contributing.md#notebooks).
+
 ## `No Etsy API key found`
 
 `.env` is missing or has no `ETSY_API_KEY`. See [Getting started → Add the key](getting-started.md#3-add-the-key-to-env). The file must sit in the project folder and be named exactly `.env`.
